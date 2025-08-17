@@ -14,7 +14,7 @@ load_dotenv(dotenv_path=dotenv_path)
 
 # --- MongoDB Configuration ---
 MONGO_DETAILS = os.getenv("MONGODB_URI")
-DATABASE_NAME = "scheduling_db_fastmcp" # Using a different DB name to avoid conflicts
+DATABASE_NAME = "agent_memory" # Using a different DB name to avoid conflicts
 MEETINGS_COLLECTION = "meeting_slots"
 
 # Global MongoDB client and database
