@@ -211,17 +211,26 @@ class RoutingAgent:
 
         if not client:
             raise ValueError(f"Client not available for {agent_name}")
-        if "task_id" in state:
-            taskId = state["task_id"]
-
-        else:
-            taskId = str(uuid.uuid4())
-        task_id = taskId
+        
+        # Ensure consistent session context propagation
         sessionId = state["session_id"]
+        
+        # Use existing context_id if available, otherwise create one
+        # This maintains A2A protocol session continuity
         if "context_id" in state:
             context_id = state["context_id"]
         else:
             context_id = str(uuid.uuid4())
+            state["context_id"] = context_id  # Store for future use
+        
+        # For task_id, check if we're continuing an existing task or starting new
+        if "task_id" in state and "active_agent" in state and state["active_agent"] == agent_name:
+            # Continue existing task with same agent
+            task_id = state["task_id"]
+        else:
+            # Create new task for this agent interaction
+            task_id = str(uuid.uuid4())
+            state["task_id"] = task_id
 
         messageId = ""
         metadata = {}
@@ -232,24 +241,28 @@ class RoutingAgent:
         if not messageId:
             messageId = str(uuid.uuid4())
 
+        # Build A2A compliant message payload with proper session context
         payload = {
             "message": {
                 "role": "user",
-                "parts": [{"type": "text", "text": task}], # Use the 'task' argument here
+                "parts": [{"type": "text", "text": task}],
                 "messageId": messageId,
+                "contextId": context_id,  # A2A session context
             },
         }
 
+        # Include taskId for task continuation
         if task_id:
             payload["message"]["taskId"] = task_id
 
-        if context_id:
-            payload["message"]["contextId"] = context_id
+        print(f"DEBUG: Routing Agent - Sending to {agent_name}")
+        print(f"DEBUG: Session context - sessionId: {sessionId}, contextId: {context_id}, taskId: {task_id}")
+        print(f"DEBUG: Message payload: {payload}")
         
         message_request = SendMessageRequest(
             id=messageId, params=MessageSendParams.model_validate(payload)
         )
-        send_response: SendMessageResponse = await client.send_message( message_request= message_request)
+        send_response: SendMessageResponse = await client.send_message(message_request=message_request)
         print("send_response", send_response)
 
         if not isinstance(send_response.root, SendMessageSuccessResponse):

@@ -2,6 +2,7 @@ import logging
 from a2a.types import TextPart, TaskState
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.tasks import TaskUpdater
+from .session_thread_mapper import get_session_mapper
 
 logger = logging.getLogger(__name__)
 
@@ -16,18 +17,32 @@ class LangGraphAgentExecutor(AgentExecutor):
             updater.submit()
         updater.start_work()
 
+        # Extract A2A session context for proper thread mapping
+        session_mapper = get_session_mapper()
+        
+        # Extract user_id and session_id from A2A context
+        # Use context_id as session identifier (A2A protocol standard)
+        user_id = getattr(context, 'user_id', 'default_user')
+        session_id = context.context_id or 'default_session'
+        
+        # Get consistent thread ID based on A2A session context
+        thread_id = session_mapper.get_thread_id(user_id, session_id)
+        
+        print(f"DEBUG: A2A Context - user_id: {user_id}, session_id: {session_id}")
+        print(f"DEBUG: Mapped to LangGraph thread_id: {thread_id}")
+        print(f"DEBUG: A2A task_id: {context.task_id}")
+        print(f"DEBUG: A2A context_id: {context.context_id}")
+
         # Enhanced debugging for message extraction
         print(f"DEBUG: Context type: {type(context)}")
         print(f"DEBUG: Context message type: {type(context.message)}")
         print(f"DEBUG: Context message: {context.message}")
-        print(f"DEBUG: Context message attributes: {dir(context.message)}")
         
         if hasattr(context.message, 'parts'):
             print(f"DEBUG: Message parts: {context.message.parts}")
             if context.message.parts:
                 for i, part in enumerate(context.message.parts):
                     print(f"DEBUG: Part {i}: {part}")
-                    print(f"DEBUG: Part {i} attributes: {dir(part)}")
         
         # Improved query text extraction
         query_text = ""
@@ -48,15 +63,15 @@ class LangGraphAgentExecutor(AgentExecutor):
         print(f"Executing LangGraph agent with query: '{query_text}'")
 
         try:
-            # 1. Invoke the LangGraph agent synchronously
-            config = {"configurable": {"thread_id": context.task_id}}
+            # Use consistent thread ID based on A2A session context
+            config = {"configurable": {"thread_id": thread_id}}
             result = self.agent.invoke({"messages": [("user", query_text)]}, config=config)
-            print (f"LangGraph agent result: {result}")
+            print(f"LangGraph agent result: {result}")
 
-            # 2. Extract the final response
+            # Extract the final response
             final_text = result["messages"][-1].content
           
-            # 3. Send it back
+            # Send it back
             if final_text:
                 updater.add_artifact([TextPart(text=final_text)])
             updater.complete()
