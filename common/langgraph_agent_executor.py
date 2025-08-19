@@ -1,5 +1,7 @@
+# common/langgraph_agent_executor.py
+
 import logging
-from a2a.types import TextPart, TaskState
+from a2a.types import TextPart, TaskState, Part
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.tasks import TaskUpdater
 from .session_thread_mapper import get_session_mapper
@@ -44,21 +46,24 @@ class LangGraphAgentExecutor(AgentExecutor):
                 for i, part in enumerate(context.message.parts):
                     print(f"DEBUG: Part {i}: {part}")
         
-        # Improved query text extraction
+        # CORRECTED: Improved query text extraction
         query_text = ""
         if hasattr(context.message, 'parts') and context.message.parts:
+            # Join the text from all parts of the message
+            # FIX: The Part object is a wrapper, the actual TextPart is in the `root` attribute.
             query_text = "".join(
-                p.text for p in context.message.parts
-                if hasattr(p, "text") and p.text
+                p.root.text for p in context.message.parts
+                if hasattr(p, "root") and hasattr(p.root, "text") and p.root.text
             )
         elif hasattr(context.message, 'text'):
             query_text = context.message.text
         elif hasattr(context.message, 'content'):
             query_text = context.message.content
         
-        # Fallback to string representation if still empty
+        # Fallback if text is still empty after attempting extraction
         if not query_text:
-            query_text = str(context.message) if context.message else "Hello"
+            logger.warning("Could not extract text from the message, using a default.")
+            query_text = "Hello" # Use a generic greeting as a fallback
         
         print(f"Executing LangGraph agent with query: '{query_text}'")
 

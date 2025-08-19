@@ -18,8 +18,6 @@ from langchain_core.tools import tool # Import tool decorator
 
 
 load_dotenv()
-logging.basicConfig()
-
 @tool
 def get_knowledge(query: str) -> str:
     """Retrieve knowledge from the support agent."""
@@ -42,7 +40,7 @@ Offers identity protection services by monitoring public records and alerting us
 
 @click.command()
 @click.option("--host", "host", default="localhost")
-@click.option("--port", "port", default=11001)
+@click.option("--port", "port", default=8002)
 def main(host, port):
     agent_card = AgentCard(
         name="Support Agent",
