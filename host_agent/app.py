@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 import gradio as gr
-from typing import List, AsyncIterator
+from typing import List, AsyncIterator, Dict, Any
 from adk_agent.agent import (
     root_agent as routing_agent,
 )  
@@ -24,6 +24,8 @@ from google.adk.runners import Runner
 from dotenv import load_dotenv
 import os
 from pathlib import Path
+import aiohttp
+import json
 
 # Assuming memory module is in ../memory relative to host_agent directory
 # Adjust the path as necessary if memory is located elsewhere in a2a-adk-app
@@ -60,6 +62,54 @@ ROUTING_AGENT_RUNNER = Runner(
     app_name=APP_NAME,
     session_service=SESSION_SERVICE,
 )
+
+# Agent URLs for health checking
+AGENT_URLS = [
+    "http://localhost:8001",
+    "http://localhost:8002"
+]
+
+async def fetch_agent_health(url: str) -> Dict[str, Any]:
+    """Fetch agent health status from .well-known/agent.json endpoint."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{url}/.well-known/agent.json", timeout=aiohttp.ClientTimeout(total=5)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {
+                        "status": "healthy",
+                        "url": url,
+                        "name": data.get("name", "Unknown Agent"),
+                        "description": data.get("description", "No description available"),
+                        "version": data.get("version", "Unknown"),
+                        "capabilities": data.get("capabilities", {}),
+                        "skills": data.get("skills", [])
+                    }
+                else:
+                    return {
+                        "status": "unhealthy",
+                        "url": url,
+                        "name": "Unknown Agent",
+                        "description": f"HTTP {response.status}",
+                        "version": "Unknown",
+                        "capabilities": {},
+                        "skills": []
+                    }
+    except Exception as e:
+        return {
+            "status": "offline",
+            "url": url,
+            "name": "Unknown Agent",
+            "description": f"Connection failed: {str(e)}",
+            "version": "Unknown",
+            "capabilities": {},
+            "skills": []
+        }
+
+async def get_all_agent_health() -> List[Dict[str, Any]]:
+    """Get health status for all agents."""
+    tasks = [fetch_agent_health(url) for url in AGENT_URLS]
+    return await asyncio.gather(*tasks)
 
 
 async def get_response_from_agent(
@@ -117,6 +167,68 @@ async def get_response_from_agent(
         )
 
 
+def format_agent_status(agent_data: Dict[str, Any]) -> str:
+    """Format agent data for display in a tile."""
+    status_emoji = {
+        "healthy": "🟢",
+        "unhealthy": "🟡", 
+        "offline": "🔴"
+    }
+    
+    emoji = status_emoji.get(agent_data["status"], "⚪")
+    
+    # Format skills section
+    skills_section = ""
+    if agent_data.get("skills"):
+        skills_list = []
+        for skill in agent_data['skills'][:2]:  # Show max 2 skills
+            skill_name = skill.get('name', 'Unnamed')
+            skills_list.append(f"• {skill_name}")
+        
+        skills_section = f"\n\n**🛠️ Skills:**\n" + "\n".join(skills_list)
+        
+        if len(agent_data['skills']) > 2:
+            skills_section += f"\n• *+{len(agent_data['skills']) - 2} more skills*"
+    
+    # Format capabilities section
+    capabilities_section = ""
+    if agent_data.get("capabilities"):
+        caps = agent_data["capabilities"]
+        streaming_icon = "✅" if caps.get("streaming", False) else "❌"
+        
+        input_modes = caps.get("defaultInputModes", [])
+        output_modes = caps.get("defaultOutputModes", [])
+        
+        capabilities_section = f"""
+**⚙️ Capabilities:**
+• Streaming: {streaming_icon}
+• Input: {', '.join(input_modes) if input_modes else 'N/A'}
+• Output: {', '.join(output_modes) if output_modes else 'N/A'}"""
+    
+    # Status styling
+    status_text = agent_data['status'].title()
+    if agent_data['status'] == 'healthy':
+        status_display = f"🟢 **{status_text}**"
+    elif agent_data['status'] == 'unhealthy':
+        status_display = f"🟡 **{status_text}**"
+    else:
+        status_display = f"🔴 **{status_text}**"
+    
+    return f"""### {emoji} {agent_data['name']}
+**Version:** `{agent_data['version']}`  
+**Endpoint:** `{agent_data['url']}`  
+**Status:** {status_display}
+
+**📝 Description:**  
+*{agent_data['description']}*{skills_section}{capabilities_section}
+
+---"""
+
+async def refresh_agent_status():
+    """Refresh and return agent status for all agents."""
+    agent_healths = await get_all_agent_health()
+    return [format_agent_status(agent) for agent in agent_healths]
+
 async def main():
     """Main gradio app."""
     print("Creating ADK session...")
@@ -127,7 +239,7 @@ async def main():
 
     with gr.Blocks(theme=gr.themes.Ocean(), title="A2A Host Agent with Logo") as demo:
         gr.Image(
-            "static/a2a.png",
+            str(Path(__file__).parent / "static" / "a2a.png"),
             width=100,
             height=100,
             scale=0,
@@ -136,10 +248,36 @@ async def main():
             container=False,
             show_fullscreen_button=False,
         )
-        gr.ChatInterface(
+        
+        chat_interface = gr.ChatInterface(
             get_response_from_agent,
             title="A2A Host Agent",  # Title can be handled by Markdown above
-            description="This assistant can help you to check support issues and find schedule slots for Biggly Bobsy Watches",
+            description="This assistant can help you to check support issues and find schedule slots for Aura Watches",
+        )
+        
+        gr.Markdown("## 🖥️ Agent Status Dashboard")
+        
+        with gr.Row(equal_height=True):
+            with gr.Column(scale=1):
+                agent1_status = gr.Markdown("🔄 Loading Agent 1...", container=True)
+            with gr.Column(scale=1):
+                agent2_status = gr.Markdown("🔄 Loading Agent 2...", container=True)
+        
+        refresh_btn = gr.Button("🔄 Refresh Agent Status", variant="secondary", size="sm")
+        
+        async def update_status():
+            statuses = await refresh_agent_status()
+            return statuses[0], statuses[1]
+        
+        refresh_btn.click(
+            update_status,
+            outputs=[agent1_status, agent2_status]
+        )
+        
+        # Load initial status
+        demo.load(
+            update_status,
+            outputs=[agent1_status, agent2_status]
         )
 
     print("Launching Gradio interface...")

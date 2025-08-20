@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import AgentCard, AgentCapabilities
+from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 from common.langgraph_agent import create_agent
 from common.langgraph_agent_executor import LangGraphAgentExecutor
 from langchain_core.tools import tool # Import tool decorator
@@ -42,6 +42,16 @@ Offers identity protection services by monitoring public records and alerting us
 @click.option("--host", "host", default="localhost")
 @click.option("--port", "port", default=8002)
 def main(host, port):
+
+    skill = AgentSkill(
+        id="answer_question",
+        name="Answer Question",
+        description="Answers user questions about Aura devices and services.",
+        tags=["support", "aura", "devices"],
+        examples=[ "What is the battery life of the Crossbeats Orbit Aura watch?",
+                   "How do I reset my Cubitt Aura watch?",
+                   "What health metrics does the Aura app track?" ],
+    )
     agent_card = AgentCard(
         name="Support Agent",
         description="Handles user support queries and product information for Aura Devices.",
@@ -50,7 +60,7 @@ def main(host, port):
         defaultInputModes=["text"],
         defaultOutputModes=["text"],
         capabilities=AgentCapabilities(streaming=False),
-        skills=[],
+        skills=[skill],
     )
 
     system_prompt = """You are a support agent who handles support queries and product information for Aura Devices.
