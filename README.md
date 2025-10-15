@@ -52,7 +52,7 @@ graph TD
 1.  **User Interaction**: A user interacts with a primary interface or a "host" agent.
 2.  **Routing Agent (Conceptual)**: The initial request is (conceptually) processed by a routing agent. This agent determines the nature of the request and forwards it to the appropriate specialized agent. For scheduling-related tasks, it routes to the LangGraph Support/Scheduling Agent.
 3.  **LangGraph Support/Scheduling Agent**:
-    *   This agent is built using **LangGraph's ReAct architecture** with OpenAI GPT-4o as the language model.
+    *   This agent is built using **LangGraph's ReAct architecture** with Gemini `gemini-2.5-flash` model as the language model.
     *   Features advanced memory capabilities through multiple MongoDB integrations.
     *   Uses **langmem** for intelligent memory management and retrieval.
     *   Maintains conversation history through **MongoDBSaver** checkpoints.
